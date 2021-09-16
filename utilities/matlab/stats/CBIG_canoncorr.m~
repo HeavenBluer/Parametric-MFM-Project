@@ -1,0 +1,84 @@
+function [A,B,r,U,V] = CBIG_canoncorr(X,Y)
+
+% Calculate the canonical correlation analysis between XMat and YMat
+%
+%     [A,B,r,U,V] = CBIG_canoncorr(X,Y)
+%     Input:
+%       X: S x F1, S is the number of subjects, F1 is the number of features for X
+%       Y: S x F2, S is the number of subjects, F2 is the number of features for Y
+%       X and Y is in full rank and S must larger than F1 or F2
+%     Output:
+%       A,B: A and B are F1-by-D and F2-by-D matrices, where D = min(F1,F2).
+%            The jth columns of A and B contain the canonical coefficients,
+%            i.e. the linear combination of variables making up the jth 
+%            canonical variable for X and Y, respectively.  Columns of A and B
+%            are scaled to make COV(U) and COV(V) (see below) the identity matrix.
+%       r:   1-by-D vector R containing the sample canonical correlations
+%       U,V: the canonical variables, also known as scores,
+%            in the N-by-D matrices U and V.  U and V are computed
+%            U = (X - repmat(mean(X),N,1))*A 
+%            V = (Y - repmat(mean(Y),N,1))*B
+%
+%
+% Written by CBIG under MIT license: https://github.com/ThomasYeoLab/CBIG/blob/master/LICENSE.md
+% The reference is from https://en.wikipedia.org/wiki/Canonical_correlation
+
+
+[RowX,ColX] = size(X);
+[RowY,ColY] = size(Y);
+%% Check the input data
+if (RowX ~= RowY)
+    error('Input Matrices Mismatch')
+end
+if (rank(X) ~= ColX)
+    error('Bad Data X');
+end
+if (rank(Y) ~= ColY)
+    error('Bad Data Y');
+end
+
+%% Calculate the covarience matrix
+X = X - repmat(mean(X,1),RowX,1);
+Y = Y - repmat(mean(Y,1),RowY,1);
+Sigma11 = X'*X/RowX;
+Sigma22 = Y'*Y/RowY;
+Sigma12 = X'*Y/RowX;
+Sigma21 = Y'*X/RowY;
+
+%% Calculate the correlation value
+Main1 = inv(Sigma11)*Sigma12*inv(Sigma22)*Sigma21;
+[EigVect1,EigValue1] = eig(Main1);
+Main2 = inv(Sigma22)*Sigma21*inv(Sigma11)*Sigma12;
+[EigVect2,EigValue2] = eig(Main2);
+EigValue1 = diag(EigValue1);
+EigValue2 = diag(EigValue2);
+N = min(ColX,ColY);
+[r,Index1] = sort(EigValue1,1,'descend');
+[~,Index2] = sort(EigValue2,1,'descend');
+r = r(1:N)';
+r = sqrt(r);
+
+%% Calculate the canonical variates
+EigVect1 = EigVect1(:,Index1);
+EigVect2 = EigVect2(:,Index2);
+uRaw = EigVect1(:,1:N);
+vRaw = EigVect2(:,1:N);
+uS = cov(X*uRaw,0);
+vS = cov(Y*vRaw,0);
+uS = diag(uS);
+vS = diag(vS);
+A = bsxfun(@rdivide,uRaw,sqrt(uS'));
+B = bsxfun(@rdivide,vRaw,sqrt(vS'));
+U = X*A;
+V = Y*B;
+
+%% Change the sign
+SN = diag(CBIG_my_corr(U,V));
+for i = 1:N
+    if SN(i)<0
+        A(:,i) = -A(:,i);
+    end
+end
+U = X*A;
+
+end
